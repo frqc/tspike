@@ -96,13 +96,12 @@ def main(
     ).to(device)
 
     def descriptor(depth):
-        return ','.join('{:.0f}'.format(x) for x in model.columns[depth].weight.sum((1, 2, 3)).detach())
+        return ','.join('{:.1f}'.format(x) for x in model.columns[depth].weight.sum((1, 2, 3)).detach())
 
     def tester_descriptor():
         max_print = 10
-        s = f"{','.join(f'{x*100:.0f}' for x in tester.weight.mean(axis=1)[:max_print])}; "
-        s += f"{','.join(f'{x*100:.0f}' for x in tester.bias[:max_print])}; "
-
+        s = f"{','.join(f'{x*100:.2f}-{x*100*channel:.0f}' for x in tester.weight.mean(axis=1)[:max_print])}; "
+        s += f"{','.join(f'{x*100:.1f}' for x in tester.bias[:max_print])}; "
         return s
 
     def othogonal(depth):
@@ -145,7 +144,7 @@ def main(
                     train_data_iterator.set_description(
                         f'weight sum:{descriptor(depth)}; '
                         f'weight othogonal:{othogonal(depth):.4f}; '
-                        f'total spikes:{output_spikes.sum().int()}; '
+                        f'total spikes:{output_spikes.sum((1, 2, 3, 4)).mean():.0f}; '
                         f'time coverage:{(output_spikes.sum((1, 2, 3)) > 0).float().mean() * 100:.2f}')
 
             depth_i_model_path = os.path.join(model_path, str(depth))
@@ -182,7 +181,6 @@ def main(
                     output_spikes.sum((-2, -1)).argmax(-1) == label.to(device)).sum()
                 train_data_iterator.set_description(
                     f'{tester_descriptor()}; {output_spikes.sum()}, {accurate}')
-
         # make prediction
         tester.train(mode=False)
         tester_model_path = os.path.join(model_path, "fc")

@@ -462,7 +462,7 @@ class FullDualColumn(nn.Module):
     def __init__(
         self,
         synapses, neurons, input_channel=1, output_channel=1,
-        step=16, leak=32, bias=0.5, winners=None,
+        step=16, leak=32, bias=0.5, winners=None, background=0,
         fodep=None, w_init=None, theta=None, dense=None
     ):
         super(FullDualColumn, self).__init__()
@@ -477,6 +477,7 @@ class FullDualColumn(nn.Module):
         self.theta = theta = theta or dense * (synapses * input_channel)
         self.dense = dense = dense or theta / (synapses * input_channel)
         w_init = w_init or dense
+        self.background = background  # neg background
 
         # spiking control parameters
         self.response_function = StepFireLeak(step, leak)
@@ -496,9 +497,10 @@ class FullDualColumn(nn.Module):
             'Building full connected TNN layer with '
             f'theta={theta:.4f}, '
             f'dense={dense:.4f}, '
+            f'background={background}',
             f'fodep={fodep}, ',
             f'winners={winners}, '
-            f'bias={bias}'
+            f'bias={bias}',
         )
 
     def forward(self, input_spikes, labels=None, mu_capture=0.20, mu_backoff=-0.20, mu_search=0.001, beta_decay=0.999):
@@ -521,8 +523,16 @@ class FullDualColumn(nn.Module):
         input_spikes = input_spikes.reshape(batch, channel * synapses, time)
         # perform conv1d to compute potentials
         w_kernel = self.response_function.forward(self.weight)
+
+        background = (input_spikes - 1) * self.background
+        with torch.no_grad():
+            background_potentials = nn.functional.conv1d(
+                background, w_kernel, padding=self.response_function.padding)
+
         potentials = nn.functional.conv1d(
             input_spikes, w_kernel, padding=self.response_function.padding)
+        potentials += background_potentials
+
         # expand output channel and neurons
         potentials = potentials.reshape(
             batch, self.output_channel, self.neurons, -1)
